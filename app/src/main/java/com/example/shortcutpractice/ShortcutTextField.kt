@@ -1,71 +1,58 @@
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.shortcutpractice.EventBus
-import com.example.shortcutpractice.Events
-import kotlinx.coroutines.launch
+import com.example.shortcutpractice.ShortcutViewModel
 
 @Composable
 fun ShortcutTextField(
-    expectedShortcut: String
+    viewModel: ShortcutViewModel
 ) {
+    val userInput by viewModel.userInput.observeAsState(mutableListOf<String>())
+    val currentShortcut by viewModel.currentShortcut.collectAsState()
 
-    var userInput by remember { mutableStateOf("") }
+    // 处理用户输入，移除空白字符和 "+"
+    val processedInput : String = userInput.joinToString( "") { it.filterNot { it.isWhitespace() || it == '+' } }
 
-    val scope = rememberCoroutineScope()
-    DisposableEffect(Unit) {
-        val listener: (Events.KeyPress) -> Unit = { event ->
-            scope.launch {
-                userInput = event.message
-            }
-        }
+    // 检查用户输入是否为占位符的前缀
+    val isPrefix = currentShortcut?.keyCombo?.startsWith(processedInput) ?: false
 
-        EventBus.subscribe(Events.KeyPress::class.java, listener)
+    // 检查用户输入是否与占位符完全匹配
+    val isCompleteMatch = processedInput == currentShortcut?.keyCombo?.filterNot { it.isWhitespace() || it == '+' }
 
-        onDispose {
-            EventBus.unsubscribe(Events.KeyPress::class.java, listener)
+    // 设置文本颜色
+    val textColor = when {
+        isCompleteMatch -> Color.Green // 完全匹配时为绿色
+        isPrefix -> Color.Green        // 前缀匹配时为绿色
+        else -> Color.Red              // 不匹配时为红色
+    }
+
+    // 当完全匹配时触发 ViewModel 中的方法
+    LaunchedEffect(isCompleteMatch) {
+        if (isCompleteMatch) {
+            viewModel.onCorrectInputShortcut() // 假定这是 ViewModel 中的方法
         }
     }
 
-
-    Box(modifier = Modifier) {
-        Text(
-            text = buildAnnotatedString {
-                val correctInput = userInput.take(expectedShortcut.length)
-                val remainingExpected = expectedShortcut.drop(userInput.length)
-
-                // 正确输入的部分
-                withStyle(style = SpanStyle(color = Color.Green )) {
-                    append(correctInput)
-                }
-
-                // 错误输入的部分
-                if (userInput.length > expectedShortcut.length) {
-                    val incorrectInput = userInput.drop(expectedShortcut.length)
-                    withStyle(style = SpanStyle(color = Color.Red)) {
-                        append(incorrectInput)
-                    }
-                }
-
-                // 剩余的预期快捷键
-                withStyle(style = SpanStyle(color = Color.Gray)) {
-                    append(remainingExpected)
-                }
-            },
-            fontSize = 18.sp
-        )
-    }
+    // 使用 TextField 显示处理过的输入
+    TextField(
+        value = userInput.joinToString(""),
+        onValueChange = {}, // TextField 是只读的，不处理值更改
+        readOnly = true, // 设置为只读
+        textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 18.sp),
+        modifier = Modifier
+            .border(1.dp, Color.Gray)
+            .padding(1.dp)
+            .fillMaxWidth(),
+        singleLine = true // 如果希望文本在一行内显示
+    )
 }

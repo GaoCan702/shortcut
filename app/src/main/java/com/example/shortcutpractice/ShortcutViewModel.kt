@@ -1,83 +1,219 @@
 package com.example.shortcutpractice
-import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import androidx.lifecycle.ViewModel
+
+
+import ShortcutDao
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.liveData
-import com.example.shortcutpractice.model.App
-import com.example.shortcutpractice.model.Lesson
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.shortcutpractice.model.Shortcut
-import io.realm.kotlin.Realm
-import io.realm.kotlin.RealmConfiguration
-import io.realm.kotlin.ext.query
-import io.realm.kotlin.notifications.InitialResults
-import io.realm.kotlin.notifications.ResultsChange
-import io.realm.kotlin.notifications.UpdatedResults
+import io.realm.kotlin.notifications.InitialObject
+import io.realm.kotlin.notifications.UpdatedObject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import java.io.IOException
-import java.util.prefs.Preferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 
 class ShortcutViewModel : ViewModel() {
-    val dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-    val examplePreferenceFlow: Flow<String> = dataStore.data
-        .map { preferences ->
-            // 获取存储在 DataStore 中的值
-            preferences[PreferencesKeys.EXAMPLE_KEY] ?: "default value"
-        }
-        .catch { exception ->
-            // 处理错误情况
-            if (exception is IOException) {
-                emit("default value")
-                exception.printStackTrace()
-            } else {
-                throw exception
+    val userInput: MutableLiveData<MutableList<String>> = MutableLiveData(mutableListOf())
+
+    val currentKeyboardType: MutableLiveData<KeyboardType> = MutableLiveData()
+    val currentMode: MutableLiveData<Mode> = MutableLiveData(Mode.LEARN)
+    val searchStr = MutableStateFlow("")
+    val currentShortcut: MutableStateFlow<Shortcut?> = MutableStateFlow(null)
+    val currentRecommendAppList = MutableLiveData<List<String>>()
+    val shortcutHistory = MutableLiveData<List<Shortcut>>(mutableListOf())
+
+
+    init {
+        viewModelScope.launch {
+            UserPreference.getKeyboardTypePreference().let { osType ->
+                currentKeyboardType.postValue(osType)
             }
         }
 
-    // 写入 DataStore 的方法
-    suspend fun saveExamplePreference(value: String) {
-        dataStore.edit { preferences ->
-            preferences[PreferencesKeys.EXAMPLE_KEY] = value
+        viewModelScope.launch {
+            UserPreference.getModePreference().let { mode ->
+                currentMode.postValue(mode)
+            }
+        }
+
+        viewModelScope.launch {
+            val previousCurrentShortcutId: Int? = UserPreference.getCurrentShortcutIdPreference()
+            if (previousCurrentShortcutId == null) {
+                initCurrentShortcut()
+                return@launch
+            }
+            ShortcutDao.queryShortcut(previousCurrentShortcutId).collect() { change ->
+                when (change) {
+                    is InitialObject<Shortcut>, is UpdatedObject<Shortcut> -> if (change.obj != null) changeCurrentShortcut(
+                        change.obj!!
+                    )
+                    else -> {
+                        initCurrentShortcut()
+                    }
+                }
+            }
+
+        }
+
+        viewModelScope.launch {
+            searchStr.collect { str ->
+                ShortcutDao.queryApps(str).collect { appNames ->
+                    currentRecommendAppList.postValue(appNames)
+                }
+            }
         }
     }
 
-    companion object PreferencesKeys {
-        val EXAMPLE_KEY = stringPreferencesKey("example_key")
+    private fun initCurrentShortcut() {
+        viewModelScope.launch {
+            ShortcutDao.queryFirstShortcut().collect() { change ->
+                when (change) {
+                    is InitialObject<Shortcut>, is UpdatedObject<Shortcut> -> change.obj?.let {
+                        changeCurrentShortcut(it)
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    //根据currentShortcut里的appName来查询所有的groupName,并在currentShortcut改变时候更新
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getGroupNameInAppByCurrentShortcut(): Flow<List<String>> {
+        return currentShortcut.distinctUntilChangedBy { it?.appName }.flatMapLatest { shortcut ->
+            if (shortcut == null) {
+                flowOf(emptyList())
+            } else {
+                ShortcutDao.queryGroupNameByAppName(shortcut.appName)
+            }
+        }
     }
 
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getShortcutsInAppByCurrentShortcut(): Flow<List<Shortcut>> {
+        return currentShortcut.distinctUntilChangedBy { it?.appName } // This ensures that only changes in appName will emit downstream
+            .flatMapLatest { shortcut ->
+                if (shortcut == null) {
+                    flowOf(emptyList())
+                } else {
+                    ShortcutDao.queryShortcutByAppName(shortcut.appName)
+                }
+            }
+    }
 
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun getCurrentAppNameByCurrentShortcut(): Flow<String> {
+        return currentShortcut.flatMapLatest { shortcut ->
+            if (shortcut == null) {
+                flowOf("")
+            } else {
+                flowOf(shortcut.appName)
+            }
+        }
+    }
 
 
+    fun changeCurrentPreferenceShortcutId(newShortcutId: Int) {
+        viewModelScope.launch {
+            UserPreference.saveCurrentShortcutIdPreference(newShortcutId)
+        }
+    }
+
+    fun changeCurrentShortcut(newShortcut: Shortcut) {
+        currentShortcut.value = newShortcut
+        viewModelScope.launch {
+            UserPreference.saveCurrentShortcutIdPreference(newShortcut.id)
+        }
+    }
+
+    fun addUserInput(input: String) {
+        val currentList = userInput.value ?: mutableListOf()
+        currentList.add(input)
+        userInput.value = currentList
+    }
+
+    fun removeUserInput(input: String) {
+        val currentList = userInput.value ?: mutableListOf()
+        currentList.remove(input)
+        userInput.value = currentList
+    }
+
+    fun removeUserInputLastOrNull() {
+        val currentList = userInput.value ?: mutableListOf()
+        if (currentList.isNotEmpty()) {
+            currentList.removeAt(currentList.size - 1)
+            userInput.value = currentList
+        }
+    }
+
+    fun updateSearchStr(newSearchStr: String) {
+        searchStr.value = newSearchStr
+    }
+
+    fun addShortcutHistory(shortcut: Shortcut) {
+        // 获取当前的 List，如果是 null，则使用空列表
+        val currentList = shortcutHistory.value ?: emptyList()
+
+        // 添加新的 Shortcut 到列表中
+        val updatedList = currentList + shortcut
+
+        // 设置更新后的列表回 MutableLiveData
+        shortcutHistory.value = updatedList
+    }
+
+    //暴漏出UserPreference的saveOsPreference
+    fun saveOsPreference(value: KeyboardType) {
+        viewModelScope.launch {
+            UserPreference.saveKeyboardTypePreference(value)
+        }
+    }
 
 
-    private val config = RealmConfiguration.create(schema = setOf(App::class, Lesson::class, Shortcut::class))
-    private val realm: Realm = Realm.open(config)
+    //切换到currentRecommendAppList的下一个App
 
-    // LiveData 包装的 Realm 结果
-    val myData: LiveData<List<App>> = liveData {
-        // 使用 query API 监听数据变化
-        val query = realm.query<App>()
-        val results = query.find()
+    fun onCorrectInputShortcut() {
+        addShortcutHistory(currentShortcut.value!!)
 
-        // 监听变化
-        val flow = query.asFlow()
-        flow.collect { changes: ResultsChange<App> ->
-            when (changes) {
-                is InitialResults<App> -> emit(changes.list)
-                is UpdatedResults<App> -> emit(changes.list)
+    }
+
+    fun changeKeyboardType(newKeyboardType: KeyboardType) {
+        currentKeyboardType.value = newKeyboardType
+        viewModelScope.launch {
+            UserPreference.saveKeyboardTypePreference(newKeyboardType)
+        }
+    }
+
+    fun changeCurrentApp(newAppName: String) {
+        //set the currentShortcut to the first shortcut in the app
+        viewModelScope.launch {
+            ShortcutDao.queryFirstShortcutByAppName(newAppName).collect { shortcut ->
+                changeCurrentShortcut(shortcut!!)
+            }
+        }
+    }
+
+    fun changeCurrentGroup(newGroupName: String) {
+        //set the currentShortcut to the first shortcut in the app
+        viewModelScope.launch {
+            ShortcutDao.queryFirstShortcutByAppNameAndGroupName(
+                currentShortcut.value!!.appName, newGroupName
+            ).collect { shortcut ->
+                changeCurrentShortcut(shortcut!!)
             }
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        realm.close() // 关闭 Realm 实例
+        ShortcutDao.closeRealm() // 关闭 Realm 实例
     }
 }
+

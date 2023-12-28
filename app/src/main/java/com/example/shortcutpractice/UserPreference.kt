@@ -2,38 +2,61 @@ package com.example.shortcutpractice
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.Flow
-import java.util.prefs.Preferences
+import kotlinx.coroutines.flow.first
+
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 object UserPreference {
-
-    // Lazy 初始化 DataStore
-    private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
-
-    // 用于访问 DataStore 的 Context 扩展属性
     private lateinit var applicationContext: Context
 
-    // 用于初始化单例的函数，需要在 Application 类中调用
     fun init(context: Context) {
+        println("hello ")
         applicationContext = context.applicationContext
     }
 
-    // 获取某个偏好设置项的 Flow
-    val examplePreferenceFlow: Flow<String> = applicationContext.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.EXAMPLE_KEY] ?: "default value"
-        }
+    suspend fun getKeyboardTypePreference(): KeyboardType {
+        val preferences = applicationContext.dataStore.data.first()
+        val osName = preferences[PreferencesKeys.OS_KEY] ?: KeyboardType.WIN.name
+        return KeyboardType.valueOf(osName)
+    }
 
-    // 保存某个偏好设置项
-    suspend fun saveExamplePreference(value: String) {
-        applicationContext.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.EXAMPLE_KEY] = value
+    suspend fun saveKeyboardTypePreference(value: KeyboardType) {
+        applicationContext.dataStore.edit { mutablePreferences ->
+            mutablePreferences[PreferencesKeys.OS_KEY] = value.name
         }
     }
 
-    // 定义偏好设置键
+    suspend fun getModePreference(): Mode {
+        val preferences = applicationContext.dataStore.data.first()
+        val modeName = preferences[PreferencesKeys.MODE_KEY] ?: Mode.LEARN.name
+        return Mode.valueOf(modeName)
+    }
+
+    suspend fun saveModePreference(value: Mode) {
+        applicationContext.dataStore.edit { mutablePreferences ->
+            mutablePreferences[PreferencesKeys.MODE_KEY] = value.name
+        }
+    }
+
+    suspend fun getCurrentShortcutIdPreference(): Int? {
+        val preferences = applicationContext.dataStore.data.first()
+        return preferences[PreferencesKeys.SHORTCUT_KEY]
+    }
+
+    suspend fun saveCurrentShortcutIdPreference(value: Int) {
+        applicationContext.dataStore.edit { mutablePreferences ->
+            mutablePreferences[PreferencesKeys.SHORTCUT_KEY] = value
+        }
+    }
+
     private object PreferencesKeys {
-        val EXAMPLE_KEY = stringPreferencesKey("example_key")
+        val OS_KEY = stringPreferencesKey("OS_TYPE")
+        val MODE_KEY = stringPreferencesKey("MODE_KEY")
+        val SHORTCUT_KEY = intPreferencesKey("SHORTCUT_ID")
     }
 }

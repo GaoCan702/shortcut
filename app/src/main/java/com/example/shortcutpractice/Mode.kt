@@ -1,5 +1,5 @@
 package com.example.shortcutpractice
 
-enum class Os {
-    WIN, MAC
+enum class Mode {
+    LEARN, EXAM
 }
