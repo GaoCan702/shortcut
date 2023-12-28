@@ -77,7 +77,7 @@ fun ShortcutPractice(viewModel: ShortcutViewModel) {
         TopAppBar(title = {
             TextField(
                 value = searchStr,
-                onValueChange = { viewModel.updateSearchStr(it) },
+                onValueChange = { viewModel.addUserInput(it) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("search supported app") },
                 singleLine = true,

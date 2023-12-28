@@ -1,3 +1,4 @@
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -6,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -17,7 +17,7 @@ import com.example.shortcutpractice.ShortcutViewModel
 fun ShortcutTextField(
     viewModel: ShortcutViewModel
 ) {
-    val userInput by viewModel.userInput.observeAsState(mutableListOf<String>())
+    val userInput by viewModel.userInput.collectAsState(mutableListOf<String>())
     val currentShortcut by viewModel.currentShortcut.collectAsState()
 
     // 处理用户输入，移除空白字符和 "+"

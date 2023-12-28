@@ -19,8 +19,7 @@ import kotlinx.coroutines.launch
 
 class ShortcutViewModel : ViewModel() {
 
-    val userInput: MutableLiveData<MutableList<String>> = MutableLiveData(mutableListOf())
-
+    val userInput: MutableStateFlow<List<String>> = MutableStateFlow(listOf())
     val currentKeyboardType: MutableLiveData<KeyboardType> = MutableLiveData()
     val currentMode: MutableLiveData<Mode> = MutableLiveData(Mode.LEARN)
     val searchStr = MutableStateFlow("")
@@ -66,6 +65,14 @@ class ShortcutViewModel : ViewModel() {
                 ShortcutDao.queryApps(str).collect { appNames ->
                     currentRecommendAppList.postValue(appNames)
                 }
+            }
+        }
+
+        //listen to userInput
+        viewModelScope.launch {
+            userInput.collect() { input ->
+                println("userInput changed")
+                println(userInput.value)
             }
         }
     }
@@ -134,28 +141,16 @@ class ShortcutViewModel : ViewModel() {
         }
     }
 
+    //add to userInput:MutableStateFlow<List<String>> tail
     fun addUserInput(input: String) {
-        val currentList = userInput.value ?: mutableListOf()
-        currentList.add(input)
-        userInput.value = currentList
+        userInput.value = userInput.value + input
     }
-
-    fun removeUserInput(input: String) {
-        val currentList = userInput.value ?: mutableListOf()
-        currentList.remove(input)
-        userInput.value = currentList
+    fun clearUserInput() {
+        userInput.value = mutableListOf()
     }
 
     fun removeUserInputLastOrNull() {
-        val currentList = userInput.value ?: mutableListOf()
-        if (currentList.isNotEmpty()) {
-            currentList.removeAt(currentList.size - 1)
-            userInput.value = currentList
-        }
-    }
-
-    fun updateSearchStr(newSearchStr: String) {
-        searchStr.value = newSearchStr
+        userInput.value = userInput.value.dropLast(1)
     }
 
     fun addShortcutHistory(shortcut: Shortcut) {
