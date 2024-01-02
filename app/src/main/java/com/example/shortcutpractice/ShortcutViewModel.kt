@@ -27,8 +27,14 @@ class ShortcutViewModel : ViewModel() {
     val currentRecommendAppList = MutableLiveData<List<String>>()
     val shortcutHistory = MutableLiveData<List<Shortcut>>(mutableListOf())
 
+    //add a state to store the keyboard enable or disable
+    var keyboardEnable = MutableStateFlow(false)
+
+    var shotcutListInApp: Flow<List<Shortcut>> = flowOf(emptyList())
+
 
     init {
+
         viewModelScope.launch {
             UserPreference.getKeyboardTypePreference().let { osType ->
                 currentKeyboardType.postValue(osType)
@@ -73,6 +79,12 @@ class ShortcutViewModel : ViewModel() {
             userInput.collect() { input ->
                 println("userInput changed")
                 println(userInput.value)
+            }
+        }
+
+        viewModelScope.launch {
+            getShortcutsInAppByCurrentShortcut().collect { shortcuts ->
+                shotcutListInApp = flowOf(shortcuts)
             }
         }
     }
@@ -139,6 +151,7 @@ class ShortcutViewModel : ViewModel() {
         viewModelScope.launch {
             UserPreference.saveCurrentShortcutIdPreference(newShortcut.id)
         }
+        clearUserInput()
     }
 
     //add to userInput:MutableStateFlow<List<String>> tail
@@ -179,6 +192,7 @@ class ShortcutViewModel : ViewModel() {
 
     }
 
+
     fun changeKeyboardType(newKeyboardType: KeyboardType) {
         currentKeyboardType.value = newKeyboardType
         viewModelScope.launch {
@@ -204,6 +218,26 @@ class ShortcutViewModel : ViewModel() {
                 changeCurrentShortcut(shortcut!!)
             }
         }
+    }
+
+    //currentShortcut's next shortcut in the shotcutListInApp
+    fun nextShortcut() {
+        viewModelScope.launch {
+            shotcutListInApp.collect { shortcuts ->
+                val currentShortcutIndex = shortcuts.indexOf(currentShortcut.value)
+                if (currentShortcutIndex == shortcuts.size - 1) {
+                    changeCurrentShortcut(shortcuts[0])
+                } else {
+                    changeCurrentShortcut(shortcuts[currentShortcutIndex + 1])
+                }
+            }
+        }
+
+    }
+
+    //set the keyboard state to enable
+    fun setKeyboardEnable(enable: Boolean) {
+        keyboardEnable.value = enable
     }
 
     override fun onCleared() {

@@ -29,9 +29,11 @@ import com.example.shortcutpractice.ShortcutViewModel
 
 @Composable
 fun Keyboard(viewModel: ShortcutViewModel) {
-
-
     fun onKeyPress(key: String) {
+
+        if (!viewModel.keyboardEnable.value) {
+            return
+        }
         if (key == "Backspace") {
             viewModel.removeUserInputLastOrNull()
         } else {

@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.map
 
 object ShortcutDao {
 
-    val realm = Realm.open(
+    private val  realm = Realm.open(
         RealmConfiguration.Builder(schema = setOf(Shortcut::class))
             .deleteRealmIfMigrationNeeded()
             .initialData {
